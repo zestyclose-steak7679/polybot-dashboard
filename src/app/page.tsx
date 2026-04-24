@@ -4,24 +4,12 @@ export const revalidate = 60
 
 async function getStats() {
   try {
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000'
-
-    async function getStats() {
-  try {
     const res = await fetch('/api/stats', {
       next: { revalidate: 60 },
     })
 
     if (!res.ok) return null
-    return res.json()
-  } catch {
-    return null
-  }
-}
-    })
-    if (!res.ok) return null
+
     return res.json()
   } catch {
     return null
@@ -30,5 +18,6 @@ async function getStats() {
 
 export default async function Page() {
   const stats = await getStats()
+
   return <Dashboard initialData={stats} />
 }
