@@ -31,9 +31,14 @@ async function getStats() {
       fetchFile('daily_benchmarks.json'),
     ])
 
-    const bankroll = bankrollRaw
-      ? parseFloat(bankrollRaw.trim())
-      : 1000
+    const bankroll = (() => {
+  if (!bankrollRaw) return 1000
+
+  const cleaned = bankrollRaw.replace(/[^0-9.-]+/g, '')
+  const parsed = parseFloat(cleaned)
+
+  return isNaN(parsed) ? 1000 : parsed
+})()
 
     const benchmarks = benchmarksRaw
       ? JSON.parse(benchmarksRaw)
@@ -43,11 +48,13 @@ async function getStats() {
       bankroll,
       bankrollHistory: [],
       benchmarks: {
-        dailyPnL:
-          bankroll -
-          (benchmarks.bankroll_start_of_day || bankroll),
-        dailyROI: 0,
-        signalsToday: benchmarks.signals_today || 0,
+        const start =
+        typeof benchmarks.bankroll_start_of_day === 'number'
+        ? benchmarks.bankroll_start_of_day
+        : bankroll
+        const dailyPnL = bankroll - start,
+      dailyROI: 0,
+      signalsToday: benchmarks.signals_today || 0,
       },
       regime: { confirmed: 'neutral' },
       killedStrategies: [],
