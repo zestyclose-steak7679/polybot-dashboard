@@ -1,6 +1,6 @@
 import Dashboard from './components/Dashboard'
 
-export const revalidate = 60
+export const revalidate = 0
 
 async function getStats() {
   try {
@@ -13,15 +13,25 @@ async function getStats() {
       cache: 'no-store',
     })
 
-    if (!res.ok) return null
+    console.log("STATUS:", res.status)
 
-    return res.json()
-  } catch {
-    return null
+    const data = await res.json()
+    console.log("DATA:", data)
+
+    return data
+  } catch (err) {
+    console.log("ERROR:", err)
+    return { error: true }
   }
 }
+
 export default async function Page() {
   const stats = await getStats()
 
-  return <Dashboard initialData={stats} />
+  // 👇 TEMP DEBUG UI
+  return (
+    <div style={{ color: 'white', padding: 20 }}>
+      <pre>{JSON.stringify(stats, null, 2)}</pre>
+    </div>
+  )
 }
