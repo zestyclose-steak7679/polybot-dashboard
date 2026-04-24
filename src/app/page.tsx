@@ -13,7 +13,9 @@ async function fetchFile(path: string) {
     Accept: 'application/vnd.github.v3.raw',
   }
 
-  if (TOKEN) headers['Authorization'] = `Bearer ${TOKEN}`
+  if (TOKEN) {
+    headers['Authorization'] = `Bearer ${TOKEN}`
+  }
 
   const res = await fetch(
     `https://api.github.com/repos/${REPO}/contents/${path}`,
@@ -24,6 +26,15 @@ async function fetchFile(path: string) {
   return res.text()
 }
 
+function safeNumber(input: string | null, fallback = 0) {
+  if (!input) return fallback
+
+  const cleaned = input.replace(/[^0-9.-]+/g, '')
+  const parsed = parseFloat(cleaned)
+
+  return isNaN(parsed) ? fallback : parsed
+}
+
 async function getStats() {
   try {
     const [bankrollRaw, benchmarksRaw] = await Promise.all([
@@ -31,35 +42,40 @@ async function getStats() {
       fetchFile('daily_benchmarks.json'),
     ])
 
-    const bankroll = (() => {
-  if (!bankrollRaw) return 1000
-
-  const cleaned = bankrollRaw.replace(/[^0-9.-]+/g, '')
-  const parsed = parseFloat(cleaned)
-
-  return isNaN(parsed) ? 1000 : parsed
-})()
+    const bankroll = safeNumber(bankrollRaw, 1000)
 
     const benchmarks = benchmarksRaw
       ? JSON.parse(benchmarksRaw)
       : {}
 
+    const start =
+      typeof benchmarks.bankroll_start_of_day === 'number'
+        ? benchmarks.bankroll_start_of_day
+        : bankroll
+
+    const dailyPnL = bankroll - start
+
+    const dailyROI =
+      start > 0 ? (dailyPnL / start) * 100 : 0
+
     return {
       bankroll,
       bankrollHistory: [],
       benchmarks: {
-        const start =
-        typeof benchmarks.bankroll_start_of_day === 'number'
-        ? benchmarks.bankroll_start_of_day
-        : bankroll
-        const dailyPnL = bankroll - start,
-      dailyROI: 0,
-      signalsToday: benchmarks.signals_today || 0,
+        dailyPnL,
+        dailyROI,
+        signalsToday: benchmarks.signals_today || 0,
       },
-      regime: { confirmed: 'neutral' },
+      regime: {
+        confirmed: 'neutral',
+        candidate: null,
+        count: 0,
+      },
       killedStrategies: [],
+      lastUpdated: new Date().toISOString(),
     }
-  } catch {
+  } catch (err) {
+    console.error('Error fetching stats:', err)
     return null
   }
 }
