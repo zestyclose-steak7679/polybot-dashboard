@@ -1,6 +1,6 @@
 import Dashboard from './components/Dashboard'
 export const dynamic = 'force-dynamic'
-export const revalidate = 30
+
 
 async function getStats() {
   try {
