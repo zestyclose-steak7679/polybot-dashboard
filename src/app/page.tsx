@@ -1,12 +1,12 @@
 import Dashboard from './components/Dashboard'
-
+export const dynamic = 'force-dynamic'
 export const revalidate = 30
 
 async function getStats() {
   try {
     const res = await fetch(
       'https://polybot-prediction-system-production.up.railway.app/api/state',
-      { cache: 'no-store' }
+      { next: { revalidate: 30 } }
     )
     if (!res.ok) return null
     const raw = await res.json()
