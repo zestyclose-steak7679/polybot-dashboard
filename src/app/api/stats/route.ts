@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'  
 import { NextResponse } from 'next/server'
 
 const REPO = process.env.GITHUB_REPO || 'zestyclose-steak7679/polybot-prediction-system'
