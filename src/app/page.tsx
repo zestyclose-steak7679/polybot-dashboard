@@ -23,7 +23,7 @@ async function getStats() {
       open_bets: raw.open_bets ?? [],
       closed_bets: closed,
       strategies: raw.strategies ?? [],
-      bankrollHistory: (raw.market_log ?? []).slice(0, 50).reverse().map((m: any) => ({ time: m.logged_at, value: raw.bankroll })),
+      bankrollHistory: (raw.bankroll_history ?? []).map((m: any) => ({ time: m.time, value: m.value })),
       benchmarks: {
         dailyPnL: Math.round(dailyPnL * 100) / 100,
         dailyROI: raw.bankroll ? Math.round((dailyPnL / raw.bankroll) * 10000) / 100 : 0,
