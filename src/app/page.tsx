@@ -8,8 +8,18 @@ async function getStats() {
       ? `https://${process.env.VERCEL_URL}`
       : 'http://localhost:3000'
 
-    const res = await fetch(`${baseUrl}/api/stats`, {
+    async function getStats() {
+  try {
+    const res = await fetch('/api/stats', {
       next: { revalidate: 60 },
+    })
+
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
+}
     })
     if (!res.ok) return null
     return res.json()
