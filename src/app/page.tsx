@@ -1,37 +1,64 @@
 import Dashboard from './components/Dashboard'
 
-export const revalidate = 0
+export const revalidate = 60
+
+const REPO =
+  process.env.GITHUB_REPO ||
+  'zestyclose-steak7679/polybot-prediction-system'
+
+const TOKEN = process.env.GITHUB_TOKEN || ''
+
+async function fetchFile(path: string) {
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github.v3.raw',
+  }
+
+  if (TOKEN) headers['Authorization'] = `Bearer ${TOKEN}`
+
+  const res = await fetch(
+    `https://api.github.com/repos/${REPO}/contents/${path}`,
+    { cache: 'no-store' }
+  )
+
+  if (!res.ok) return null
+  return res.text()
+}
 
 async function getStats() {
   try {
-    const baseUrl =
-      process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : 'http://localhost:3000'
+    const [bankrollRaw, benchmarksRaw] = await Promise.all([
+      fetchFile('bankroll.txt'),
+      fetchFile('daily_benchmarks.json'),
+    ])
 
-    const res = await fetch(`${baseUrl}/api/stats`, {
-      cache: 'no-store',
-    })
+    const bankroll = bankrollRaw
+      ? parseFloat(bankrollRaw.trim())
+      : 1000
 
-    console.log("STATUS:", res.status)
+    const benchmarks = benchmarksRaw
+      ? JSON.parse(benchmarksRaw)
+      : {}
 
-    const data = await res.json()
-    console.log("DATA:", data)
-
-    return data
-  } catch (err) {
-    console.log("ERROR:", err)
-    return { error: true }
+    return {
+      bankroll,
+      bankrollHistory: [],
+      benchmarks: {
+        dailyPnL:
+          bankroll -
+          (benchmarks.bankroll_start_of_day || bankroll),
+        dailyROI: 0,
+        signalsToday: benchmarks.signals_today || 0,
+      },
+      regime: { confirmed: 'neutral' },
+      killedStrategies: [],
+    }
+  } catch {
+    return null
   }
 }
 
 export default async function Page() {
   const stats = await getStats()
 
-  // 👇 TEMP DEBUG UI
-  return (
-    <div style={{ color: 'white', padding: 20 }}>
-      <pre>{JSON.stringify(stats, null, 2)}</pre>
-    </div>
-  )
+  return <Dashboard initialData={stats} />
 }
