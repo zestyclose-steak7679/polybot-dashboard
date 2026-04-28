@@ -1,6 +1,6 @@
 import Dashboard from './components/Dashboard'
-export const dynamic = 'force-dynamic'
 
+export const revalidate = 30
 
 async function getStats() {
   try {
@@ -11,34 +11,62 @@ async function getStats() {
     if (!res.ok) return null
     const raw = await res.json()
 
-    const closed = raw.closed_bets ?? []
+    const closed = (raw.closed_bets ?? []) as any[]
+    const openBets = (raw.open_bets ?? []) as any[]
     const today = new Date().toISOString().slice(0, 10)
+
+    // Fix avgCLV — exclude null CLV bets
+    const clvBets = closed.filter((b: any) => b.clv != null)
+    const avgCLV = clvBets.length
+      ? clvBets.reduce((s: number, b: any) => s + b.clv, 0) / clvBets.length
+      : 0
+
     const todayBets = closed.filter((b: any) => b.closed_at?.startsWith(today))
     const dailyPnL = todayBets.reduce((s: number, b: any) => s + (b.pnl ?? 0), 0)
-    const signalsToday = (raw.bankroll_history ?? []).filter((m: any) => m.time?.startsWith(today)).length
-    const avgCLV = closed.length
-      ? closed.reduce((s: number, b: any) => s + (b.clv ?? 0), 0) / closed.length
-      : 0
+
+    // Fix equity curve — compute from closed bets cumulative PnL
+    const sortedClosed = [...closed]
+      .filter((b: any) => b.closed_at)
+      .sort((a: any, b: any) => new Date(a.closed_at).getTime() - new Date(b.closed_at).getTime())
+
+    let running = 1000
+    const bankrollHistory = sortedClosed.map((b: any) => {
+      running += (b.pnl ?? 0)
+      return { time: b.closed_at?.slice(0, 16)?.replace('T', ' '), value: Math.round(running * 100) / 100 }
+    })
+
+    // Add current point
+    if (bankrollHistory.length > 0) {
+      bankrollHistory.push({ time: 'now', value: raw.bankroll ?? 1000 })
+    }
+
+    const signalsToday = (raw.bankroll_history ?? [])
+      .filter((m: any) => m.time?.startsWith(today)).length
 
     return {
       bankroll: raw.bankroll ?? 1000,
-      open_bets: raw.open_bets ?? [],
+      open_bets: openBets,
       closed_bets: closed,
       strategies: raw.strategies ?? [],
-      bankrollHistory: (raw.bankroll_history ?? []).map((m: any) => ({
-        time: m.time,
-        value: m.value,
-      })),
+      bankrollHistory,
+      fetchedAt: new Date().toISOString(),
       benchmarks: {
         dailyPnL: Math.round(dailyPnL * 100) / 100,
         dailyROI: raw.bankroll
-          ? Math.round((dailyPnL / raw.bankroll) * 10000) / 100
+          ? Math.round((dailyPnL / 1000) * 10000) / 100
           : 0,
         signalsToday,
         totalBets: closed.length,
         avgCLV: Math.round(avgCLV * 10000) / 10000,
+        winRate: closed.length
+          ? Math.round((closed.filter((b: any) =>
+              b.result === 'win' || b.result === 'timeout_win').length / closed.length) * 1000) / 10
+          : 0,
+        timeoutRate: closed.length
+          ? Math.round((closed.filter((b: any) =>
+              b.result?.startsWith('timeout')).length / closed.length) * 1000) / 10
+          : 0,
       },
-      regime: { confirmed: 'neutral', candidate: '—', count: 0 },
     }
   } catch (err) {
     console.error('Error fetching stats:', err)
