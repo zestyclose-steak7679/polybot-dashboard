@@ -24,21 +24,33 @@ const C = {
 const RAILWAY_URL = 'https://polybot-prediction-system-production.up.railway.app'
 
 // ── Hooks ──────────────────────────────────────────────
-function useUptime() {
-  const [uptime, setUptime] = useState('')
+// "Last cycle Xm ago" — driven by `last_cycle_at` from /api/state.
+// Replaces the previously hardcoded "uptime since 2 days ago" mock.
+function useLastCycle(lastCycleAt: string | null | undefined) {
+  const [label, setLabel] = useState('—')
   useEffect(() => {
-    const start = Date.now() - 2 * 24 * 3600 * 1000
     const update = () => {
-      const d = Date.now() - start
-      const h = Math.floor(d / 3600000)
-      const m = Math.floor((d % 3600000) / 60000)
-      setUptime(`${h}h ${m}m`)
+      if (!lastCycleAt) {
+        setLabel('—')
+        return
+      }
+      const t = new Date(lastCycleAt + (lastCycleAt.endsWith('Z') ? '' : 'Z'))
+      const ms = Date.now() - t.getTime()
+      if (Number.isNaN(ms) || ms < 0) {
+        setLabel('—')
+        return
+      }
+      const m = Math.floor(ms / 60000)
+      if (m < 1) setLabel('just now')
+      else if (m < 60) setLabel(`${m}m ago`)
+      else if (m < 1440) setLabel(`${Math.floor(m / 60)}h ${m % 60}m ago`)
+      else setLabel(`${Math.floor(m / 1440)}d ago`)
     }
     update()
     const id = setInterval(update, 30000)
     return () => clearInterval(id)
-  }, [])
-  return uptime
+  }, [lastCycleAt])
+  return label
 }
 
 function useLiveData() {
@@ -258,9 +270,9 @@ export default function Dashboard({ initialData }: { initialData: any }) {
   const [strategyCfg, setStrategyCfg] = useState({ momentum: true, reversal: true, volume_spike: true })
   const [notification, setNotification] = useState<string | null>(null)
   const { data: liveData, lastFetch, refresh } = useLiveData()
-  const uptime = useUptime()
 
   const raw = liveData ?? initialData ?? {}
+  const lastCycle = useLastCycle(raw.last_cycle_at ?? raw.lastCycleAt ?? null)
   const closed = (raw.closed_bets ?? []) as any[]
   const openBets = (raw.open_bets ?? []) as any[]
   const strategies = (raw.strategies ?? []) as any[]
@@ -437,7 +449,7 @@ export default function Dashboard({ initialData }: { initialData: any }) {
                       { label: 'Daily P&L', value: `+$0.00`, valueColor: C.green },
                       { label: 'Total Trades', value: closed.length },
                       { label: 'Win Rate', value: `${winRate}%`, valueColor: winRate >= 50 ? C.green : C.red },
-                      { label: 'Uptime', value: uptime },
+                      { label: 'Last cycle', value: lastCycle, valueColor: lastCycle === '\u2014' ? C.textMuted : C.text },
                     ].map(row => (
                       <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: `1px solid ${C.border}` }}>
                         <div style={{ fontSize: '13px', color: C.textMuted }}>{row.label}</div>
