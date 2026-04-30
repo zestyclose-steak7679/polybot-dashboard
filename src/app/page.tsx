@@ -49,10 +49,15 @@ async function getStats() {
       closed_bets: closed,
       strategies: raw.strategies ?? [],
       bankrollHistory,
-      // Last cycle timestamp from the bot — drives the "Last cycle" widget
-      // and replaces the previously hardcoded fake uptime.
+      // Last cycle timestamp from the bot
       lastCycleAt: raw.last_cycle_at ?? null,
       fetchedAt: new Date().toISOString(),
+      // Stage 1.5 W1 — new observability fields from /api/state
+      lastCycleStatus: raw.last_cycle_status ?? null,
+      cycleSuccessRate24h: raw.cycle_success_rate_24h ?? null,
+      sharpe30d: raw.sharpe_30d ?? null,
+      maxDrawdownPct: raw.max_drawdown_pct ?? null,
+      calibrationBuckets: raw.calibration_buckets ?? [],
       benchmarks: {
         dailyPnL: Math.round(dailyPnL * 100) / 100,
         dailyROI: raw.bankroll

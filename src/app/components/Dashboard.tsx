@@ -24,8 +24,6 @@ const C = {
 const RAILWAY_URL = 'https://polybot-prediction-system-production.up.railway.app'
 
 // ── Hooks ──────────────────────────────────────────────
-// "Last cycle Xm ago" — driven by `last_cycle_at` from /api/state.
-// Replaces the previously hardcoded "uptime since 2 days ago" mock.
 function useLastCycle(lastCycleAt: string | null | undefined) {
   const [label, setLabel] = useState('—')
   useEffect(() => {
@@ -82,6 +80,7 @@ const NAV = [
   { id: 'positions', icon: '◧', label: 'Positions' },
   { id: 'strategies', icon: '⚡', label: 'Strategies' },
   { id: 'analytics', icon: '◈', label: 'Analytics' },
+  { id: 'calibration', icon: '◉', label: 'Calibration' },
   { id: 'alerts', icon: '◎', label: 'Alerts' },
   { id: 'logs', icon: '≡', label: 'Logs' },
 ]
@@ -280,7 +279,14 @@ export default function Dashboard({ initialData }: { initialData: any }) {
   const pnlTotal = bankroll - 1000
   const isUp = pnlTotal >= 0
 
-  // Equity curve
+  // Stage 1.5 W1 — new metrics (handle both snake_case from live API and camelCase from SSR)
+  const sharpe30d: number | null = raw.sharpe30d ?? raw.sharpe_30d ?? null
+  const maxDrawdownPct: number | null = raw.maxDrawdownPct ?? raw.max_drawdown_pct ?? null
+  const cycleSuccessRate24h: number | null = raw.cycleSuccessRate24h ?? raw.cycle_success_rate_24h ?? null
+  const lastCycleStatus: string | null = raw.lastCycleStatus ?? raw.last_cycle_status ?? null
+  const calibrationBuckets: any[] = raw.calibrationBuckets ?? raw.calibration_buckets ?? []
+
+  // Equity curve — net-of-fees automatically since pnl is fee-adjusted upstream
   const sortedClosed = [...closed]
     .filter((b: any) => b.closed_at)
     .sort((a: any, b: any) => new Date(a.closed_at).getTime() - new Date(b.closed_at).getTime())
@@ -449,7 +455,8 @@ export default function Dashboard({ initialData }: { initialData: any }) {
                       { label: 'Daily P&L', value: `+$0.00`, valueColor: C.green },
                       { label: 'Total Trades', value: closed.length },
                       { label: 'Win Rate', value: `${winRate}%`, valueColor: winRate >= 50 ? C.green : C.red },
-                      { label: 'Last cycle', value: lastCycle, valueColor: lastCycle === '\u2014' ? C.textMuted : C.text },
+                      { label: 'Last cycle', value: lastCycle, valueColor: lastCycle === '—' ? C.textMuted : C.text },
+                      { label: 'Cycle status', value: lastCycleStatus ?? '—', valueColor: lastCycleStatus === 'success' ? C.green : lastCycleStatus ? C.amber : C.textMuted },
                     ].map(row => (
                       <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: `1px solid ${C.border}` }}>
                         <div style={{ fontSize: '13px', color: C.textMuted }}>{row.label}</div>
@@ -466,8 +473,8 @@ export default function Dashboard({ initialData }: { initialData: any }) {
                 {[
                   { icon: '⚡', title: 'Edit Strategies', desc: 'Toggle active strategies', action: () => setShowStrategiesModal(true), color: C.accent },
                   { icon: '◧', title: 'View Positions', desc: 'See open bets', action: () => setPage('positions'), color: C.blue },
-                  { icon: '◈', title: 'Analytics', desc: 'Performance insights', action: () => setPage('analytics'), color: '#a855f7' },
-                  { icon: '≡', title: 'View Logs', desc: 'Railway deploy logs', action: () => window.open('https://railway.com', '_blank'), color: C.amber },
+                  { icon: '◉', title: 'Calibration', desc: 'Edge vs hit-rate buckets', action: () => setPage('calibration'), color: '#a855f7' },
+                  { icon: '◈', title: 'Analytics', desc: 'Performance insights', action: () => setPage('analytics'), color: '#3b82f6' },
                 ].map(item => (
                   <div
                     key={item.title}
@@ -496,10 +503,10 @@ export default function Dashboard({ initialData }: { initialData: any }) {
             {/* Equity + Recent Activity */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '16px' }}>
 
-              {/* Equity */}
+              {/* Equity — net-of-fees (pnl is fee-adjusted upstream in tracking/clv.py) */}
               <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <div style={{ fontSize: '16px', fontWeight: 700, color: C.text }}>Equity Curve</div>
+                  <div style={{ fontSize: '16px', fontWeight: 700, color: C.text }}>Equity Curve <span style={{ fontSize: '11px', color: C.textMuted, fontWeight: 400 }}>(net of fees)</span></div>
                   <div style={{ fontSize: '13px', color: isUp ? C.green : C.red }}>
                     {isUp ? '▲' : '▼'} ${Math.abs(pnlTotal).toFixed(2)} ({isUp ? '+' : ''}{((pnlTotal / 1000) * 100).toFixed(2)}%)
                   </div>
@@ -571,7 +578,6 @@ export default function Dashboard({ initialData }: { initialData: any }) {
               <StatCard title="Avg Hold Time" value={`${openBets.length ? Math.round(openBets.reduce((s: number, b: any) => s + (Date.now() - new Date(b.placed_at).getTime()) / 3600000, 0) / openBets.length * 10) / 10 : 0}h`} sub="Time in position" icon="⏱" iconBg="rgba(168,85,247,0.15)" />
             </div>
 
-            {/* Open bets table */}
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '12px', marginBottom: '16px' }}>
               <div style={{ padding: '20px 24px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontSize: '16px', fontWeight: 700, color: C.text }}>Open Positions ({openBets.length})</div>
@@ -618,7 +624,6 @@ export default function Dashboard({ initialData }: { initialData: any }) {
               </div>
             </div>
 
-            {/* Closed bets */}
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '12px' }}>
               <div style={{ padding: '20px 24px', borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ fontSize: '16px', fontWeight: 700, color: C.text }}>Trade History ({closed.length})</div>
@@ -723,11 +728,40 @@ export default function Dashboard({ initialData }: { initialData: any }) {
         {/* ── ANALYTICS PAGE ── */}
         {page === 'analytics' && (
           <div style={{ animation: 'fadeUp 0.3s ease' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '16px', marginBottom: '20px' }}>
+            {/* Core metrics */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '16px', marginBottom: '16px' }}>
               <StatCard title="Total Bets" value={closed.length} icon="📊" />
               <StatCard title="Win Rate" value={`${winRate}%`} color={winRate >= 50 ? C.green : C.red} icon="🏆" />
               <StatCard title="Avg CLV" value={avgCLV > 0 ? `+${avgCLV.toFixed(4)}` : avgCLV.toFixed(4)} color={avgCLV > 0 ? C.green : C.red} icon="📈" />
               <StatCard title="Timeout Rate" value={`${closed.length ? Math.round(closed.filter((b: any) => b.result?.startsWith('timeout')).length / closed.length * 1000) / 10 : 0}%`} icon="⏱" />
+            </div>
+
+            {/* Risk & cycle metrics — Stage 1.5 W1 */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '16px', marginBottom: '20px' }}>
+              <StatCard
+                title="Sharpe (30d)"
+                value={sharpe30d != null ? sharpe30d.toFixed(2) : '—'}
+                sub="Annualised daily returns"
+                icon="📐"
+                color={sharpe30d != null ? (sharpe30d > 1 ? C.green : sharpe30d > 0 ? C.amber : C.red) : C.textMuted}
+                iconBg="rgba(108,99,255,0.15)"
+              />
+              <StatCard
+                title="Max Drawdown"
+                value={maxDrawdownPct != null ? `${maxDrawdownPct.toFixed(2)}%` : '—'}
+                sub="Peak-to-trough all-time"
+                icon="📉"
+                color={maxDrawdownPct != null ? (maxDrawdownPct < 5 ? C.green : maxDrawdownPct < 15 ? C.amber : C.red) : C.textMuted}
+                iconBg="rgba(239,68,68,0.12)"
+              />
+              <StatCard
+                title="Cycle Success (24h)"
+                value={cycleSuccessRate24h != null ? `${(cycleSuccessRate24h * 100).toFixed(0)}%` : '—'}
+                sub={lastCycleStatus ? `Last: ${lastCycleStatus}` : 'No cycle data yet'}
+                icon="🔄"
+                color={cycleSuccessRate24h != null ? (cycleSuccessRate24h >= 0.9 ? C.green : cycleSuccessRate24h >= 0.7 ? C.amber : C.red) : C.textMuted}
+                iconBg="rgba(34,197,94,0.12)"
+              />
             </div>
 
             {/* CLV by strategy */}
@@ -754,7 +788,7 @@ export default function Dashboard({ initialData }: { initialData: any }) {
 
             {/* Equity full */}
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '24px' }}>
-              <div style={{ fontSize: '16px', fontWeight: 700, color: C.text, marginBottom: '16px' }}>Full Equity Curve</div>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: C.text, marginBottom: '16px' }}>Full Equity Curve <span style={{ fontSize: '11px', color: C.textMuted, fontWeight: 400 }}>(net of fees)</span></div>
               {equityCurve.length > 1 ? (
                 <ResponsiveContainer width="100%" height={250}>
                   <AreaChart data={equityCurve}>
@@ -773,6 +807,114 @@ export default function Dashboard({ initialData }: { initialData: any }) {
                 </ResponsiveContainer>
               ) : (
                 <div style={{ height: '250px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted }}>Awaiting closed positions</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── CALIBRATION PAGE ── */}
+        {page === 'calibration' && (
+          <div style={{ animation: 'fadeUp 0.3s ease' }}>
+            {/* Top metrics */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '16px', marginBottom: '20px' }}>
+              <StatCard
+                title="Sharpe (30d)"
+                value={sharpe30d != null ? sharpe30d.toFixed(2) : '—'}
+                sub="Annualised daily returns"
+                icon="📐"
+                color={sharpe30d != null ? (sharpe30d > 1 ? C.green : sharpe30d > 0 ? C.amber : C.red) : C.textMuted}
+                iconBg="rgba(108,99,255,0.15)"
+              />
+              <StatCard
+                title="Max Drawdown"
+                value={maxDrawdownPct != null ? `${maxDrawdownPct.toFixed(2)}%` : '—'}
+                sub="Peak-to-trough all-time"
+                icon="📉"
+                color={maxDrawdownPct != null ? (maxDrawdownPct < 5 ? C.green : maxDrawdownPct < 15 ? C.amber : C.red) : C.textMuted}
+                iconBg="rgba(239,68,68,0.12)"
+              />
+              <StatCard
+                title="Cycle Success (24h)"
+                value={cycleSuccessRate24h != null ? `${(cycleSuccessRate24h * 100).toFixed(0)}%` : '—'}
+                sub={lastCycleStatus ? `Last status: ${lastCycleStatus}` : 'No cycle data yet'}
+                icon="🔄"
+                color={cycleSuccessRate24h != null ? (cycleSuccessRate24h >= 0.9 ? C.green : cycleSuccessRate24h >= 0.7 ? C.amber : C.red) : C.textMuted}
+                iconBg="rgba(34,197,94,0.12)"
+              />
+            </div>
+
+            {/* Calibration table */}
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '12px' }}>
+              <div style={{ padding: '20px 24px', borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: '16px', fontWeight: 700, color: C.text }}>Calibration Buckets</div>
+                <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '4px' }}>
+                  Predicted edge bin × hold horizon × domain → actual win rate.
+                  Green ≥ 55%, amber 45–55%, red &lt; 45%.
+                </div>
+              </div>
+              {calibrationBuckets.length > 0 ? (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: C.surface2 }}>
+                        {['Domain', 'Horizon', 'Predicted Edge', 'Actual Hit Rate', 'N'].map(h => (
+                          <th key={h} style={{
+                            padding: '10px 16px', textAlign: 'center',
+                            fontSize: '11px', fontWeight: 600, color: C.textMuted,
+                            letterSpacing: '1px', borderBottom: `1px solid ${C.border}`,
+                          }}>{h.toUpperCase()}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...calibrationBuckets]
+                        .sort((a: any, b: any) =>
+                          `${a.domain}${a.horizon_bin}${a.predicted_edge_bin}`
+                            .localeCompare(`${b.domain}${b.horizon_bin}${b.predicted_edge_bin}`)
+                        )
+                        .map((row: any, i: number) => {
+                          const hit = row.actual_hit_rate ?? 0
+                          const hitColor = hit >= 0.55 ? C.green : hit >= 0.45 ? C.amber : C.red
+                          return (
+                            <tr key={i} className="hover-row" style={{ borderBottom: `1px solid ${C.border}` }}>
+                              <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: '13px', color: C.text, textTransform: 'capitalize' }}>
+                                {row.domain}
+                              </td>
+                              <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: '13px', color: C.textDim }}>
+                                {row.horizon_bin}
+                              </td>
+                              <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                <span style={{
+                                  fontSize: '12px', color: C.accent,
+                                  background: 'rgba(108,99,255,0.12)',
+                                  padding: '3px 10px', borderRadius: '20px', fontWeight: 600,
+                                }}>{row.predicted_edge_bin}</span>
+                              </td>
+                              <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: '16px', fontWeight: 700, color: hitColor }}>
+                                {(hit * 100).toFixed(1)}%
+                              </td>
+                              <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: '13px', color: C.textMuted }}>
+                                {row.n}
+                              </td>
+                            </tr>
+                          )
+                        })
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{
+                  padding: '60px', textAlign: 'center', color: C.textMuted,
+                  fontSize: '14px', display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', gap: '10px',
+                }}>
+                  <div style={{ fontSize: '36px', opacity: 0.25 }}>◉</div>
+                  No calibration data yet
+                  <div style={{ fontSize: '12px', color: C.textMuted, maxWidth: '320px' }}>
+                    Needs closed bets with edge estimates. Data appears automatically after positions settle.
+                  </div>
+                </div>
               )}
             </div>
           </div>
